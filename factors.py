@@ -30,36 +30,42 @@ def obi_ratio(df: pd.DataFrame) -> pd.Series:
     total = bid + ask
     return (bid - ask) / total.where(total != 0)
 
-def cancel_ratio(df: pd.DataFrame, look_back_ticks: int) -> pd.Series:
-    """Rolling cancel-to-add ratio over the last ``look_back_ticks`` events.
+def net_liquidity_flow(df: pd.DataFrame, look_back_ticks: int) -> pd.Series:
+    """Volume-weighted net liquidity flow over the last ``look_back_ticks`` events.
 
-    CR = (# cancel events) / (# add events) within the trailing window.
+    Each event's ``size`` is signed by its effect on resting liquidity:
+        add (A)    -> +size   (liquidity supplied)
+        cancel (C) -> -size   (liquidity withdrawn)
+        trade (T)  -> -size   (liquidity consumed)
+    then normalized by the total volume in the window:
 
-    A high value (>> 1) means many orders are placed then quickly pulled
-    (fleeting/flickering quotes), typical of fast quoting activity.
+        flow = sum(signed size) / sum(|size|)   over the window
+
+    Range is [-1, 1]:
+        > 0 -> book is net building up (more adds than cancels+trades)
+        < 0 -> book is net being torn down
+        ~ 0 -> balanced
 
     Parameters
     ----------
     df : pd.DataFrame
-        MBP-1 data with an ``action`` column (A=Add, C=Cancel, ...).
+        MBP-1 data with ``action`` (A/C/T) and ``size`` columns.
     look_back_ticks : int
         Number of trailing events (rows) in the rolling window.
 
     Returns
     -------
     pd.Series
-        Cancel-to-add ratio per row, aligned to ``df``'s index. NaN until the
-        window is full, and NaN where no adds occurred in the window.
+        Net liquidity flow per row, aligned to ``df``'s index. NaN: warm-up rows
+        before the window is full.
     """
-    is_cancel = df["action"].eq("C")
-    is_add = df["action"].eq("A")
+    sign = df["action"].map({"A": 1, "C": -1, "T": -1}).fillna(0)
+    signed = sign * df["size"]
 
-    # NaN: warm-up rows where the window is not yet full.
-    cancels = is_cancel.rolling(look_back_ticks, min_periods=look_back_ticks).sum()
-    adds = is_add.rolling(look_back_ticks, min_periods=look_back_ticks).sum()
-
-    # NaN: when adds == 0 (undefined ratio, avoids inf).
-    return cancels / adds.where(adds != 0)
+    # NaN: warm-up rows where the window is not yet full. The denominator (sum of
+    # sizes, all >= 1) is never 0 over a full window, so no divide-by-zero guard.
+    roll = lambda s: s.rolling(look_back_ticks, min_periods=look_back_ticks).sum()
+    return roll(signed) / roll(df["size"])
 
 
 def trend_ratio(df: pd.DataFrame, look_back_ticks: int) -> pd.Series:
@@ -174,7 +180,7 @@ def volume_weighted_mid_deviation(df: pd.DataFrame, look_back_trades: int) -> pd
 nvda_mbp1 = load_mbp1("data/nvda_mbp1_2026-06-01.parquet")
 
 nvda_mbp1["obi_ratio"] = obi_ratio(nvda_mbp1)
-nvda_mbp1["cancel_ratio"] = cancel_ratio(nvda_mbp1, look_back_ticks=100)
+nvda_mbp1["net_liquidity_flow"] = net_liquidity_flow(nvda_mbp1, look_back_ticks=100)
 nvda_mbp1["trend_ratio"] = trend_ratio(nvda_mbp1, look_back_ticks=100)
 nvda_mbp1["change_in_spread"] = change_in_spread(nvda_mbp1, look_back_ticks=100)
 nvda_mbp1["vwmd"] = volume_weighted_mid_deviation(nvda_mbp1, look_back_trades=100)
