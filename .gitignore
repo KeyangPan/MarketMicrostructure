@@ -1,4 +1,6 @@
 .venv/
-data/
 .idea/
 .env
+
+# Ignore large data files but keep scripts/docs in data/
+data/*.parquet
