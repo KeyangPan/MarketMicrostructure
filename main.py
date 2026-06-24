@@ -3,11 +3,8 @@ import pandas as pd
 nvda_mbp1 = pd.read_parquet('data/nvda_mbp1_2026-06-01.parquet')
 
 nvda_mbp1["ts_event"] = (
-
     pd.to_datetime(nvda_mbp1["ts_event"])
-
     .dt.tz_convert("America/New_York")
-
 )
 
 nvda_mbp1 = (
