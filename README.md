@@ -15,8 +15,10 @@ Notation:
 ## 1. Order Book Imbalance — `obi_ratio`
 
 $$
-\text{OBI} = \frac{\text{bid\_sz} - \text{ask\_sz}}{\text{bid\_sz} + \text{ask\_sz}} \in [-1, 1]
+\text{OBI} = \frac{V_{\text{bid}} - V_{\text{ask}}}{V_{\text{bid}} + V_{\text{ask}}} \in [-1, 1]
 $$
+
+where $V_{\text{bid}}$, $V_{\text{ask}}$ are the resting sizes at the best bid and ask.
 
 **Logic.** Compares resting size at the best bid vs. the best ask. More size on
 the bid (`OBI > 0`) means buy-side pressure — buyers are queued deeper than
@@ -37,9 +39,10 @@ $$
 $$
 
 $$
-\text{flow} = \frac{\sum \text{signed size}}{\sum |\text{size}|}
-\quad\text{over } \texttt{look\_back\_ticks} \in [-1, 1]
+\text{flow} = \frac{\sum \text{signed size}}{\sum |\text{size}|} \in [-1, 1]
 $$
+
+computed over the trailing `look_back_ticks` events.
 
 **Logic.** Captures whether the book is *dynamically* building up or being torn
 down. Adds supply liquidity (`+`); cancels withdraw it and trades consume it
@@ -58,7 +61,7 @@ $$
 $$
 
 $$
-\text{trend\_ratio} = \frac{\text{net}}{\text{path}} \in [-1, 1]
+\text{trend ratio} = \frac{\text{net}}{\text{path}} \in [-1, 1]
 $$
 
 **Logic.** Measures how *efficiently* the mid moved — net displacement divided
@@ -72,9 +75,11 @@ noise, where OBI/flow capture order-book pressure.
 ## 4. Change in Spread — `change_in_spread`
 
 $$
-\text{spread}_t = \text{ask\_px}_t - \text{bid\_px}_t, \qquad
-\text{change\_in\_spread} = \text{spread}_t - \text{mean}_n(\text{spread})
+S_t = \text{ask}_t - \text{bid}_t, \qquad
+\text{change in spread} = S_t - \text{mean}_n(S)
 $$
+
+where $S_t$ is the spread and $\text{mean}_n$ is the rolling mean over $n$ events.
 
 **Logic.** Deviation of the current spread from its recent rolling-mean norm.
 `> 0` means the spread is wider than usual — liquidity drying up, rising
@@ -88,8 +93,9 @@ A liquidity-stress / volatility signal rather than a directional one.
 
 $$
 \text{VWAP}_{t,n} = \frac{\sum \text{TradeVol} \cdot \text{TradePrice}}{\sum \text{TradeVol}}
-\quad\text{over the last } \texttt{look\_back\_trades} \text{ trades}
 $$
+
+over the last `look_back_trades` trades, then
 
 $$
 \text{VWMD}_t = \text{mid}_t - \text{VWAP}_{t,n}
