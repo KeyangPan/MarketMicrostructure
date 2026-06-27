@@ -1,0 +1,99 @@
+from dataclasses import dataclass
+from typing import Iterator
+
+import pandas as pd
+
+
+@dataclass(frozen=True)
+class WindowSplit:
+    """One rolling walk-forward window: a train slice followed by a val slice.
+
+    All bounds are half-open [start, end) on ``ts_event``. ``index`` is the
+    0-based position of the window in the walk-forward sequence.
+    """
+
+    index: int
+    train: pd.DataFrame
+    val: pd.DataFrame
+    train_start: pd.Timestamp
+    train_end: pd.Timestamp  # == val_start
+    val_end: pd.Timestamp
+
+
+def holdout_split(
+    df: pd.DataFrame,
+    close_ts: pd.Timestamp,
+    holdout_minutes: int = 60,
+    time_col: str = "ts_event",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Carve the final ``holdout_minutes`` before ``close_ts`` off as hold-out.
+
+    The hold-out is reserved strictly for final reporting and must never enter
+    any train/val window. Returns ``(trainable, holdout)``.
+
+    Bounds are half-open: trainable = [open, cutoff), holdout = [cutoff, close).
+    """
+    ts = df[time_col]
+    cutoff = close_ts - pd.Timedelta(minutes=holdout_minutes)
+    return df[ts < cutoff], df[ts >= cutoff]
+
+
+def rolling_windows(
+    df: pd.DataFrame,
+    session_start: pd.Timestamp,
+    session_end: pd.Timestamp,
+    window_minutes: int = 60,
+    train_minutes: int = 50,
+    step_minutes: int = 10,
+    time_col: str = "ts_event",
+) -> Iterator[WindowSplit]:
+    """Yield rolling walk-forward train/val splits over [session_start, session_end).
+
+    Each window spans ``window_minutes`` of wall-clock time, split into the
+    first ``train_minutes`` for training and the remainder for validation. The
+    window then advances by ``step_minutes`` (walk-forward). With the defaults
+    (60 / 50 / 10) the 10-minute validation segments tile the range
+    contiguously.
+
+    Slicing is time-based on ``time_col`` (MBP data is irregularly spaced in
+    event time, so a fixed row count would not give equal-duration windows).
+    Bounds are half-open [start, end). Only windows whose clock end falls at or
+    before ``session_end`` are emitted; a trailing partial window is dropped.
+
+    Note: ``df`` should already have the final hold-out removed (see
+    ``holdout_split``) so the hold-out never leaks into a val slice.
+    """
+    val_minutes = window_minutes - train_minutes
+    if val_minutes <= 0:
+        raise ValueError(
+            f"train_minutes ({train_minutes}) must be < window_minutes "
+            f"({window_minutes}) to leave room for validation."
+        )
+
+    ts = df[time_col]
+    window = pd.Timedelta(minutes=window_minutes)
+    train_len = pd.Timedelta(minutes=train_minutes)
+    step = pd.Timedelta(minutes=step_minutes)
+
+    index = 0
+    start = session_start
+    # Emit only fully-formed windows: the window must end at or before the
+    # session end boundary.
+    while start + window <= session_end:
+        train_end = start + train_len  # also the validation start
+        val_end = start + window
+
+        train = df[(ts >= start) & (ts < train_end)]
+        val = df[(ts >= train_end) & (ts < val_end)]
+
+        yield WindowSplit(
+            index=index,
+            train=train,
+            val=val,
+            train_start=start,
+            train_end=train_end,
+            val_end=val_end,
+        )
+
+        index += 1
+        start += step
