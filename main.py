@@ -1,7 +1,5 @@
 from typing import Iterator, NamedTuple
-
 import pandas as pd
-
 from utils import load_book
 
 
@@ -18,27 +16,6 @@ class WindowSplit(NamedTuple):
     train_start: pd.Timestamp
     train_end: pd.Timestamp  # == val_start
     val_end: pd.Timestamp
-
-
-def session_bounds(
-    df: pd.DataFrame,
-    open_time: str = "09:30",
-    close_time: str = "16:00",
-    time_col: str = "ts_event",
-) -> tuple[pd.Timestamp, pd.Timestamp]:
-    """Fixed RTH open/close timestamps for the session's trading date (ET).
-
-    The data is guaranteed to span the regular session, so anchoring to fixed
-    clock boundaries (rather than the ragged first/last event) keeps windows
-    aligned to clean minute marks and lets the final window reach the close.
-    """
-    ts = df[time_col]
-    date = ts.iloc[0].date()
-    tz = ts.dt.tz
-    return (
-        pd.Timestamp(f"{date} {open_time}", tz=tz),
-        pd.Timestamp(f"{date} {close_time}", tz=tz),
-    )
 
 
 def holdout_split(
@@ -122,11 +99,10 @@ def rolling_windows(
 
 if __name__ == "__main__":
     nvda = load_book("data/nvda_mbp1_2026-06-01.parquet")
-    open_ts, close_ts = session_bounds(nvda)  # 09:30, 16:00 ET
+    open_ts = pd.Timestamp("2026-06-01 09:30", tz="America/New_York")
+    close_ts = pd.Timestamp("2026-06-01 16:00", tz="America/New_York")
 
     trainable, holdout = holdout_split(nvda, close_ts, holdout_minutes=60)
-    # Windows tile [open, close - holdout); the final hold-out is excluded.
-    windows_end = close_ts - pd.Timedelta(minutes=60)
 
     print(
         f"full: {len(nvda):,} rows "
@@ -134,6 +110,8 @@ if __name__ == "__main__":
     )
     print(f"trainable: {len(trainable):,} rows | holdout: {len(holdout):,} rows\n")
 
+    # Windows tile [open, close - holdout); the final hold-out is excluded.
+    windows_end = close_ts - pd.Timedelta(minutes=60)
     for w in rolling_windows(trainable, open_ts, windows_end):
         print(
             f"window {w.index:>2} | "
