@@ -1,5 +1,5 @@
 import pandas as pd
-from utils import load_mbp1
+from utils import load_book
 
 
 def obi_ratio(df: pd.DataFrame) -> pd.Series:
@@ -177,7 +177,7 @@ def volume_weighted_mid_deviation(df: pd.DataFrame, look_back_trades: int) -> pd
     return mid - vwap
 
 
-nvda_mbp1 = load_mbp1("data/nvda_mbp1_2026-06-01.parquet")
+nvda_mbp1 = load_book("data/nvda_mbp1_2026-06-01.parquet")
 
 nvda_mbp1["obi_ratio"] = obi_ratio(nvda_mbp1)
 nvda_mbp1["net_liquidity_flow"] = net_liquidity_flow(nvda_mbp1, look_back_ticks=100)
