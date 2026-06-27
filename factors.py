@@ -1,5 +1,4 @@
 import pandas as pd
-from utils import load_book
 
 
 def obi_ratio(df: pd.DataFrame) -> pd.Series:
@@ -177,10 +176,25 @@ def volume_weighted_mid_deviation(df: pd.DataFrame, look_back_trades: int) -> pd
     return mid - vwap
 
 
-nvda_mbp1 = load_book("data/nvda_mbp1_2026-06-01.parquet")
+# Registry of factors with their default parameters. Each entry maps a column
+# name to a callable taking the DataFrame and returning a Series. Centralizing
+# this lets compute_factors() build a consistent feature matrix that both the IC
+# study and the later Lasso model can consume.
+FACTORS = {
+    "obi_ratio": obi_ratio,
+    "net_liquidity_flow": lambda df: net_liquidity_flow(df, look_back_ticks=100),
+    "trend_ratio": lambda df: trend_ratio(df, look_back_ticks=100),
+    "change_in_spread": lambda df: change_in_spread(df, look_back_ticks=100),
+    "vwmd": lambda df: volume_weighted_mid_deviation(df, look_back_trades=100),
+}
 
-nvda_mbp1["obi_ratio"] = obi_ratio(nvda_mbp1)
-nvda_mbp1["net_liquidity_flow"] = net_liquidity_flow(nvda_mbp1, look_back_ticks=100)
-nvda_mbp1["trend_ratio"] = trend_ratio(nvda_mbp1, look_back_ticks=100)
-nvda_mbp1["change_in_spread"] = change_in_spread(nvda_mbp1, look_back_ticks=100)
-nvda_mbp1["vwmd"] = volume_weighted_mid_deviation(nvda_mbp1, look_back_trades=100)
+
+def compute_factors(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute every registered factor on ``df``, returned as a feature matrix.
+
+    Columns are the factor names in ``FACTORS``, aligned to ``df``'s index.
+    Warm-up rows (before each rolling window is full) are NaN. Computing factors
+    on a slice keeps them causal within that slice -- no look-back reaches across
+    a window boundary.
+    """
+    return pd.DataFrame({name: func(df) for name, func in FACTORS.items()}, index=df.index)
