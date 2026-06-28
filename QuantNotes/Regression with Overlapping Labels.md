@@ -1,485 +1,224 @@
 # Regression with Overlapping Labels, Autocorrelated Errors, and GLS
 
-Author: Keyang Pan
-
-Last Updated: 2026-06-27
-
----
-
-# 1. Motivation
-
-Suppose we perform a regression on high-frequency data.
-
-Observation frequency:
-
-- Every tick
-
-Target:
-
-```text
-y_t = log(M_{t+n}) - log(M_t)
-```
-
-where
-
-- M_t = mid-price
-- n = prediction horizon (e.g. 100 ticks)
-
-The problem is that consecutive labels overlap heavily.
-
-Example:
-
-```text
-y_t     = M_100 - M_0
-y_{t+1} = M_101 - M_1
-```
-
-These two labels share
-
-```text
-M_1 ... M_100
-```
-
-which means almost the entire future path is identical.
-
-Therefore,
-
-```text
-Corr(y_t, y_{t+1}) ≈ 1
-```
+**Author:** Keyang Pan
+**Last updated:** 2026-06-27
 
 ---
 
-# 2. Which OLS assumption is violated?
+## 1. Motivation
+
+Suppose we run a regression on high-frequency data, observed **every tick**, with
+the target
+
+$$
+y_t = \log(M_{t+n}) - \log(M_t)
+$$
+
+where $M_t$ is the mid-price and $n$ is the prediction horizon (e.g. 100 ticks).
+
+The problem is that consecutive labels **overlap heavily**. For example:
+
+$$
+y_t = M_{100} - M_0, \qquad y_{t+1} = M_{101} - M_1
+$$
+
+These two labels share the path $M_1, \dots, M_{100}$ — almost the entire future
+window is identical. Therefore
+
+$$
+\mathrm{Corr}(y_t, y_{t+1}) \approx 1.
+$$
+
+---
+
+## 2. Which OLS assumption is violated?
 
 OLS assumes
 
-```text
-Var(epsilon) = sigma^2 I
-```
+$$
+\mathrm{Var}(\varepsilon) = \sigma^2 I,
+$$
 
-This implies
-
-- Homoskedasticity
-- No serial correlation
+which implies **homoskedasticity** and **no serial correlation**.
 
 In the overlapping-label case,
 
-```text
-Var(epsilon) = Omega
-```
+$$
+\mathrm{Var}(\varepsilon) = \Omega, \qquad \mathrm{Cov}(\varepsilon_t, \varepsilon_{t+k}) \neq 0.
+$$
 
-where
-
-```text
-Cov(epsilon_t, epsilon_{t+k}) != 0
-```
-
-Therefore,
-
-OLS no longer satisfies the Gauss-Markov assumptions.
+So OLS no longer satisfies the Gauss–Markov assumptions.
 
 ---
 
-# 3. Does OLS coefficient become wrong?
+## 3. Does the OLS coefficient become wrong?
 
-No.
+**No.** The OLS estimator
 
-The OLS estimator is
+$$
+\hat\beta = (X'X)^{-1} X'y
+$$
 
-```text
-beta_hat = (X'X)^(-1) X'y
-```
-
-It is still unbiased provided
-
-```text
-E[epsilon | X] = 0
-```
-
+is still unbiased provided exogeneity holds, $\mathbb{E}[\varepsilon \mid X] = 0$.
 The coefficient estimate remains valid.
 
-The problem is **NOT bias**.
-
-The problem is **variance estimation**.
+> The problem is **not bias** — it is **variance estimation**.
 
 ---
 
-# 4. What becomes wrong?
+## 4. What becomes wrong?
 
 OLS reports
 
-```text
-Var(beta_hat)
-=
-sigma^2 (X'X)^(-1)
-```
+$$
+\mathrm{Var}(\hat\beta) = \sigma^2 (X'X)^{-1},
+$$
 
-This is only true if
+which is only true when $\mathrm{Var}(\varepsilon) = \sigma^2 I$. The correct
+("sandwich") variance is
 
-```text
-Var(epsilon) = sigma^2 I
-```
+$$
+\mathrm{Var}(\hat\beta) = (X'X)^{-1}\, X'\,\Omega\, X\, (X'X)^{-1}.
+$$
 
-The correct variance is
+Consequences of using the wrong formula:
 
-```text
-Var(beta_hat)
-=
-(X'X)^(-1)
-X'
-Omega
-X
-(X'X)^(-1)
-```
-
-Consequences:
-
-- Standard errors are underestimated.
-- t-statistics are inflated.
-- p-values become too optimistic.
-- Confidence intervals become too narrow.
+| Quantity | Effect |
+| --- | --- |
+| Standard errors | Underestimated |
+| t-statistics | Inflated |
+| p-values | Too optimistic |
+| Confidence intervals | Too narrow |
 
 ---
 
-# 5. Effective sample size
+## 5. Effective sample size
 
-Suppose
+Suppose one million ticks and a 100-tick forward return. Although there are
+$N = 1{,}000{,}000$ observations, the labels overlap heavily, so the effective
+number of independent observations is approximately
 
-- one million ticks
-- future 100-tick return
+$$
+N_{\text{eff}} \approx \frac{N}{100}.
+$$
 
-Although there are
-
-```text
-1,000,000 observations
-```
-
-the labels overlap heavily.
-
-The effective number of independent observations is approximately
-
-```text
-N_eff ≈ N / 100
-```
-
-This is why overlapping labels often produce misleadingly significant results.
+This is why overlapping labels often produce **misleadingly significant** results.
 
 ---
 
-# 6. Solutions
+## 6. Solutions
 
-## Solution A: Decimation
+### A. Decimation
 
-Only sample every n-th observation.
+Sample only every $n$-th observation ($0, 100, 200, 300, \dots$).
 
-Example:
+- **Pro:** independent labels.
+- **Con:** throws away most of the data.
 
-```text
-0
-100
-200
-300
-...
-```
+### B. HAC (Newey–West)
 
-Pros
+Keep all observations, estimate the covariance of the residuals, and correct
+**only the standard errors**. The coefficient is unchanged.
 
-- Independent labels
+### C. Hansen–Hodrick
 
-Cons
+Specifically designed for overlapping returns; commonly used in empirical
+finance.
 
-- Throw away most data
+### D. Prediction instead of inference
 
----
-
-## Solution B: HAC (Newey-West)
-
-Keep all observations.
-
-Estimate the covariance of residuals.
-
-Correct only the standard errors.
-
-Coefficient remains unchanged.
+If the objective is prediction rather than statistical inference, we often ignore
+t-statistics entirely and evaluate with **IC, Sharpe, PnL, out-of-sample $R^2$**.
 
 ---
 
-## Solution C: Hansen-Hodrick
+## 7. GLS
 
-Specifically designed for overlapping returns.
+Given $\mathrm{Var}(\varepsilon) = \Omega$, GLS estimates
 
-Commonly used in empirical finance.
+$$
+\hat\beta_{\text{GLS}} = (X'\,\Omega^{-1} X)^{-1} X'\,\Omega^{-1} y.
+$$
 
----
-
-## Solution D: Prediction instead of inference
-
-If the objective is prediction rather than statistical inference,
-
-we often ignore t-statistics completely.
-
-Instead evaluate using
-
-- IC
-- Sharpe
-- PnL
-- Out-of-sample R²
+The intuition: instead of assuming independent errors, GLS **removes the
+correlation first**.
 
 ---
 
-# 7. GLS
+## 8. Whitening
 
-Suppose
+Find a matrix $P = \Omega^{-1/2}$ such that
 
-```text
-Var(epsilon) = Omega
-```
+$$
+P\,\Omega\,P' = I.
+$$
 
-GLS estimates
+Transform the regression by multiplying through by $P$:
 
-```text
-beta_GLS
-=
-(X' Omega^(-1) X)^(-1)
-X' Omega^(-1) y
-```
+$$
+y = X\beta + \varepsilon \quad\Longrightarrow\quad Py = PX\beta + P\varepsilon.
+$$
 
-The intuition is simple:
-
-Instead of assuming independent errors,
-
-GLS removes the correlation first.
+Since $\mathrm{Var}(P\varepsilon) = I$, the transformed regression satisfies the
+OLS assumptions. Run ordinary least squares on $(Py,\, PX)$.
 
 ---
 
-# 8. Whitening
+## 9. Feasible GLS (FGLS)
 
-Find a matrix
+Usually $\Omega$ is unknown. Typical workflow:
 
-```text
-P = Omega^(-1/2)
-```
-
-such that
-
-```text
-P Omega P' = I
-```
-
-Transform the regression.
-
-Original:
-
-```text
-y = X beta + epsilon
-```
-
-Multiply by P:
-
-```text
-Py = PX beta + P epsilon
-```
-
-Since
-
-```text
-Var(P epsilon) = I
-```
-
-the transformed regression satisfies OLS assumptions.
-
-Run ordinary least squares on
-
-```text
-(Py, PX)
-```
+1. **Run OLS** and obtain residuals $\hat\varepsilon$.
+2. **Model the residual process**, e.g.
+   - AR(1): $\varepsilon_t = \rho\,\varepsilon_{t-1} + u_t$
+   - MA(q), ARMA, AR-GARCH, etc.
+3. **Estimate** $\hat\Omega$.
+4. **Construct** $P = \hat\Omega^{-1/2}$.
+5. **Whiten:** $\tilde y = P y$, $\tilde X = P X$.
+6. **Run OLS again** on the whitened data.
 
 ---
 
-# 9. Feasible GLS (FGLS)
+## 10. Important distinction: autocorrelation vs heteroskedasticity
 
-Usually
+These are **different problems**:
 
-```text
-Omega
-```
+| Concept | Definition | Modeled by |
+| --- | --- | --- |
+| Autocorrelation | $\mathrm{Cov}(\varepsilon_t, \varepsilon_{t-k}) \neq 0$ | AR / MA / ARMA |
+| Heteroskedasticity | $\mathrm{Var}(\varepsilon_t)$ changes over time | GARCH |
 
-is unknown.
-
-Typical workflow:
-
-### Step 1
-
-Run OLS.
-
-Obtain residuals
-
-```text
-epsilon_hat
-```
+GARCH models **time-varying (conditional) variance**, *not* serial correlation
+itself. AR(1) models **serial correlation**. **AR-GARCH** models both
+simultaneously.
 
 ---
 
-### Step 2
+## 11. Why GLS is uncommon in high-frequency finance
 
-Model the residual process.
+With a 100-tick horizon, the residuals behave approximately like an **MA(99)**
+process, so the covariance matrix $\Omega$ becomes extremely large. For millions
+of observations, constructing $\Omega^{-1}$ is computationally expensive.
 
-Examples
-
-AR(1)
-
-```text
-epsilon_t
-=
-rho * epsilon_{t-1}
-+
-u_t
-```
-
-MA(q)
-
-ARMA
-
-AR-GARCH
-
-etc.
-
----
-
-### Step 3
-
-Estimate
-
-```text
-Omega_hat
-```
-
----
-
-### Step 4
-
-Construct
-
-```text
-P = Omega_hat^(-1/2)
-```
-
----
-
-### Step 5
-
-Whiten
-
-```text
-y_tilde = P y
-
-X_tilde = P X
-```
-
----
-
-### Step 6
-
-Run OLS again.
-
----
-
-# 10. Important distinction
-
-Autocorrelation means
-
-```text
-Cov(epsilon_t, epsilon_{t-k}) != 0
-```
-
-Heteroskedasticity means
-
-```text
-Var(epsilon_t)
-```
-
-changes over time.
-
-These are different problems.
-
-GARCH models
-
-- Time-varying variance
-
-NOT
-
-- Serial correlation itself
-
-For example
-
-AR(1)
-
-models
-
-- Serial correlation
-
-GARCH
-
-models
-
-- Conditional variance
-
-AR-GARCH
-
-models both simultaneously.
-
----
-
-# 11. Why GLS is uncommon in high-frequency finance
-
-Suppose
-
-future horizon = 100 ticks.
-
-Residuals approximately behave like
-
-```text
-MA(99)
-```
-
-The covariance matrix
-
-```text
-Omega
-```
-
-becomes extremely large.
-
-For millions of observations,
-
-constructing
-
-```text
-Omega^(-1)
-```
-
-is computationally expensive.
-
-Therefore practitioners usually prefer
+Practitioners therefore usually prefer:
 
 - OLS + HAC standard errors
-- Hansen-Hodrick
-- Time-series cross validation
-- Purged CV
-- Embargo
+- Hansen–Hodrick
+- Time-series cross-validation
+- Purged CV + embargo
 - Non-overlapping test labels
 
 rather than full GLS.
 
 ---
 
-# 12. Key Takeaways
+## 12. Key takeaways
 
-- Overlapping labels create serially correlated errors.
-- OLS coefficients remain unbiased if exogeneity holds.
-- OLS standard errors become incorrect.
-- GLS attempts to whiten the residuals before regression.
-- FGLS estimates the covariance structure from residuals.
-- GARCH models volatility, not autocorrelation.
-- In quantitative finance, HAC and careful backtesting are usually preferred over full GLS.
+- Overlapping labels create **serially correlated errors**.
+- OLS coefficients remain **unbiased** if exogeneity holds.
+- OLS **standard errors become incorrect** (too small).
+- **GLS** whitens the residuals before regression; **FGLS** estimates the
+  covariance structure from residuals first.
+- **GARCH** models volatility, not autocorrelation.
+- In quant finance, **HAC + careful backtesting** are usually preferred over full
+  GLS.
