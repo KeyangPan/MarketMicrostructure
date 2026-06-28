@@ -124,7 +124,7 @@ def summarize_ic(ic_df: pd.DataFrame) -> pd.DataFrame:
                 "n_windows": int(ic.notna().sum()),
                 "mean_ic": mean_ic,
                 "ic_std": std,
-                "ir": mean_ic / std if std else np.nan,
+                # "ir": mean_ic / std if std else np.nan,
             }
         )
 
