@@ -12,10 +12,10 @@ import numpy as np
 import pandas as pd
 
 from factors import compute_factors
-from train_test_splits import WindowSplit
+from data_splits import WindowSplit
 
 DEFAULT_HORIZON = 100
-DEFAULT_TARGETS = ("bid_px_00", "ask_px_00")
+DEFAULT_TARGETS = ("bid_px_00", "ask_px_00", "mid_px_00")
 
 
 def forward_change(df: pd.DataFrame, col: str, horizon: int) -> pd.Series:
@@ -44,7 +44,14 @@ def build_dataset(
 
     Both are aligned to ``df``'s index; rows with NaN (factor warm-up at the head,
     target look-ahead at the tail) are left in place for the caller to drop.
+
+    ``mid_px_00`` is a derived column (mean of best bid/ask), materialized here so
+    it can be used as a target alongside the raw quote columns.
     """
+    df = df.copy()
+    if "mid_px_00" not in df.columns:
+        df["mid_px_00"] = (df["bid_px_00"] + df["ask_px_00"]) / 2
+
     X = compute_factors(df)
     y = pd.DataFrame(
         {f"{col}_ret": forward_change(df, col, horizon) for col in targets},
@@ -118,7 +125,6 @@ def summarize_ic(ic_df: pd.DataFrame) -> pd.DataFrame:
                 "mean_ic": mean_ic,
                 "ic_std": std,
                 "ir": mean_ic / std if std else np.nan,
-                "hit_rate": (np.sign(ic) == np.sign(mean_ic)).mean(),
             }
         )
 
@@ -126,6 +132,6 @@ def summarize_ic(ic_df: pd.DataFrame) -> pd.DataFrame:
         ic_df.groupby(["factor", "target"])[["ic"]]
         .apply(agg)
         .reset_index()
-        .sort_values("ir", key=lambda s: s.abs(), ascending=False)
+        .sort_values(["factor", 'target'], ascending=True)
         .reset_index(drop=True)
     )
